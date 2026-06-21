@@ -8,11 +8,16 @@ import { SetEditorScreen } from './pages/SetEditorScreen'
 import { AdminGuard } from './components/AdminGuard'
 import { AuthStatusBanner } from './features/auth/AuthStatusBanner'
 import { ConsentBanner } from './components/ConsentBanner'
+import { OfflineBanner } from './components/OfflineBanner'
+import { useOfflineQueue } from './hooks/useOfflineQueue'
 
 function App() {
+  useOfflineQueue();
+
   return (
     <BrowserRouter>
       <AuthStatusBanner />
+      <OfflineBanner />
       <Routes>
         <Route path="/" element={<SetCatalogueScreen />} />
         <Route path="/exam/:setId" element={<AssessmentScreen />} />

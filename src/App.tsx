@@ -1,13 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { SetCatalogueScreen } from './pages/SetCatalogueScreen'
-
-function AssessmentScreen() {
-  return (
-    <div className="min-h-screen bg-dark-900 text-white flex items-center justify-center">
-      <h1 className="text-2xl font-bold">Assessment</h1>
-    </div>
-  )
-}
+import { AssessmentScreen } from './pages/AssessmentScreen'
 
 function ResultsScreen() {
   return (

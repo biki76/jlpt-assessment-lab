@@ -1,14 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { SetCatalogueScreen } from './pages/SetCatalogueScreen'
 import { AssessmentScreen } from './pages/AssessmentScreen'
-
-function ResultsScreen() {
-  return (
-    <div className="min-h-screen bg-dark-900 text-white flex items-center justify-center">
-      <h1 className="text-2xl font-bold">Results</h1>
-    </div>
-  )
-}
+import { ResultsDashboardScreen } from './pages/ResultsDashboardScreen'
 
 function App() {
   return (
@@ -16,7 +9,7 @@ function App() {
       <Routes>
         <Route path="/" element={<SetCatalogueScreen />} />
         <Route path="/exam/:setId" element={<AssessmentScreen />} />
-        <Route path="/results/:sessionId" element={<ResultsScreen />} />
+        <Route path="/results/:sessionId" element={<ResultsDashboardScreen />} />
       </Routes>
     </BrowserRouter>
   )

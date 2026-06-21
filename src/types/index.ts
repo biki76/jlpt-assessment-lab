@@ -116,3 +116,10 @@ export interface AdminUser {
   email: string;
   role: 'admin';
 }
+
+// ─── Admin Types ────────────────────────────────────────────────────────────
+
+export interface AdminQuestion extends Question {
+  correct_answer_id: string;
+  explanation: string;
+}

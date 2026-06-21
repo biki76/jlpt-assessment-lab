@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useExamStore } from '../stores/examStore';
-import { useSessionRecovery } from '../hooks/useSessionRecovery';
 import { useAutoSave } from '../hooks/useAutoSave';
 import { fetchQuestionsForSet } from '../services/questionService';
 import { SessionRecoveryModal } from '../features/assessment/SessionRecoveryModal';
@@ -20,22 +19,43 @@ export function AssessmentScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [sessionChecked, setSessionChecked] = useState(false);
 
   const currentSession = useExamStore((s) => s.currentSession);
-  // const currentQuestions = useExamStore((s) => s.currentQuestions);
   const setQuestionsInStore = useExamStore((s) => s.setQuestions);
   const setCurrentQuestion = useExamStore((s) => s.setCurrentQuestion);
   const recordAnswer = useExamStore((s) => s.recordAnswer);
   const initSession = useExamStore((s) => s.initSession);
+  const clearSession = useExamStore((s) => s.clearSession);
 
-  const { status: recoveryStatus, existingSession, onResume, onStartFresh } = useSessionRecovery(setId || '');
   useAutoSave();
-
   const answerStartTime = useRef<number>(Date.now());
+
+  // Check for existing session on mount
+  useEffect(() => {
+    if (!setId || sessionChecked) return;
+
+    // Only show recovery if there's a session with ACTUAL answers for THIS set
+    const hasValidSession = currentSession && 
+      currentSession.set_id === setId && 
+      !currentSession.is_completed && 
+      !currentSession.is_abandoned &&
+      Object.keys(currentSession.answers).length > 0;
+
+    if (hasValidSession) {
+      setShowRecoveryModal(true);
+    } else {
+      // Clear any stale session and start fresh
+      clearSession();
+      initSession(setId);
+    }
+    setSessionChecked(true);
+  }, [setId, currentSession, sessionChecked, clearSession, initSession]);
 
   // Load questions
   useEffect(() => {
-    if (!setId) return;
+    if (!setId || !sessionChecked) return;
 
     const load = async () => {
       setLoading(true);
@@ -52,7 +72,7 @@ export function AssessmentScreen() {
     };
 
     load();
-  }, [setId, setQuestionsInStore]);
+  }, [setId, sessionChecked, setQuestionsInStore]);
 
   // Reset answer timer when question changes
   useEffect(() => {
@@ -77,38 +97,34 @@ export function AssessmentScreen() {
 
   const handleConfirmSubmit = useCallback(() => {
     setShowSubmitModal(false);
-    // TODO: Scoring flow (Sprint 3)
-    // For now, navigate to results with mock data
     navigate(`/results/${currentSession?.id || 'mock'}`);
   }, [navigate, currentSession]);
 
-  const handleStartFresh = useCallback(() => {
-    onStartFresh();
-  }, [onStartFresh]);
+  const handleStartNew = useCallback(() => {
+    setShowRecoveryModal(false);
+    clearSession();
+    if (setId) initSession(setId);
+  }, [clearSession, initSession, setId]);
 
   const handleResume = useCallback(() => {
-    onResume();
-  }, [onResume]);
+    setShowRecoveryModal(false);
+  }, []);
 
   // Show recovery modal
-  if (recoveryStatus === 'found' && existingSession) {
+  if (showRecoveryModal && currentSession) {
     return (
-      <SessionRecoveryModal
-        session={existingSession}
-        onResume={handleResume}
-        onStartNew={handleStartFresh}
-      />
+      <div className="min-h-screen bg-dark-900 text-white flex items-center justify-center">
+        <SessionRecoveryModal
+          session={currentSession}
+          onResume={handleResume}
+          onStartNew={handleStartNew}
+        />
+      </div>
     );
   }
 
-  // Initialize fresh session if none exists
-  if (recoveryStatus === 'none' && !currentSession && setId) {
-    initSession(setId);
-    return <LoadingSkeleton />;
-  }
-
   // Loading state
-  if (loading || !currentSession) {
+  if (loading || !currentSession || !sessionChecked) {
     return (
       <div className="min-h-screen bg-dark-900 text-white">
         <LoadingSkeleton />

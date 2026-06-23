@@ -1,137 +1,85 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchPublishedSets } from '../services/questionService';
-import { useExamStore } from '../stores/examStore';
-import { LoadingSkeleton } from '../components/LoadingSkeleton';
-import { ErrorModal } from '../components/ErrorModal';
-import type { QuestionSet } from '../types';
+import { BookOpen, ChevronRight, Clock, BarChart3 } from 'lucide-react';
+import { ThemeToggle } from '../components/ThemeToggle';
 
-type LevelFilter = 'all' | 'N5' | 'N4' | 'N3';
+type JLPTLevel = 'All' | 'N5' | 'N4' | 'N3';
+interface QuestionSet { id: string; title: string; level: 'N5' | 'N4' | 'N3'; questionCount: number; estimatedMinutes: number; difficulty: 'Beginner' | 'Intermediate' | 'Advanced'; }
+
+const LEVELS: JLPTLevel[] = ['All', 'N5', 'N4', 'N3'];
+const DIFFICULTY_STYLES = { Beginner: 'bg-success-bg text-success', Intermediate: 'bg-warning-bg text-warning', Advanced: 'bg-danger-bg text-danger' };
 
 export function SetCatalogueScreen() {
   const navigate = useNavigate();
-  const initSession = useExamStore((s) => s.initSession);
+  const [activeFilter, setActiveFilter] = useState<JLPTLevel>('All');
   const [sets, setSets] = useState<QuestionSet[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [activeFilter, setActiveFilter] = useState<LevelFilter>('all');
-
-  const loadSets = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const level = activeFilter === 'all' ? undefined : activeFilter;
-      const data = await fetchPublishedSets(level);
-      setSets(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load sets');
-    } finally {
-      setLoading(false);
-    }
-  }, [activeFilter]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    loadSets();
-  }, [loadSets]);
+    setSets([
+      { id: '1', title: 'Core Vocabulary Essentials', level: 'N5', questionCount: 25, estimatedMinutes: 20, difficulty: 'Beginner' },
+      { id: '2', title: 'Basic Grammar Patterns', level: 'N5', questionCount: 25, estimatedMinutes: 20, difficulty: 'Beginner' },
+      { id: '3', title: 'Intermediate Kanji Review', level: 'N4', questionCount: 25, estimatedMinutes: 25, difficulty: 'Intermediate' },
+      { id: '4', title: 'Complex Sentence Structures', level: 'N4', questionCount: 25, estimatedMinutes: 25, difficulty: 'Intermediate' },
+      { id: '5', title: 'Advanced Reading Comprehension', level: 'N3', questionCount: 25, estimatedMinutes: 30, difficulty: 'Advanced' },
+      { id: '6', title: 'N3 Grammar & Vocabulary Mix', level: 'N3', questionCount: 25, estimatedMinutes: 30, difficulty: 'Advanced' },
+    ]);
+    setIsLoading(false);
+  }, []);
 
-  const handleSetSelect = (setId: string) => {
-    initSession(setId);
-    navigate(`/exam/${setId}`);
-  };
-
-  const filters: { key: LevelFilter; label: string }[] = [
-    { key: 'all', label: 'All' },
-    { key: 'N5', label: 'N5' },
-    { key: 'N4', label: 'N4' },
-    { key: 'N3', label: 'N3' },
-  ];
+  const filtered = activeFilter === 'All' ? sets : sets.filter((s) => s.level === activeFilter);
 
   return (
-    <div className="min-h-screen bg-dark-900 text-white">
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-dark-900/95 backdrop-blur border-b border-dark-700">
-        <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
-          <h1 className="text-lg font-bold tracking-tight">NihonSync Test Lab</h1>
-          <span className="text-xs text-gray-400">JLPT Practice</span>
+    <div className="min-h-screen bg-bg-base">
+      <header className="sticky top-0 z-40 bg-bg-base/80 backdrop-blur-md border-b border-border">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-radius-md bg-accent flex items-center justify-center"><BookOpen className="w-5 h-5 text-text-inverse" /></div>
+            <div><h1 className="text-base font-bold text-text-primary leading-tight tracking-tight">NihonSync</h1><p className="text-xs text-text-tertiary font-medium leading-none">JLPT Test Lab</p></div>
+          </div>
+          <ThemeToggle />
         </div>
       </header>
 
-      {/* Level Filter */}
-      <div className="max-w-lg mx-auto px-4 pt-4">
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-          {filters.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setActiveFilter(f.key)}
-              className={`tap-min px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                activeFilter === f.key
-                  ? 'bg-primary-600 text-white'
-                  : 'bg-dark-700 text-gray-300 hover:bg-dark-600'
-              }`}
-            >
-              {f.label}
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+        <div className="mb-8 animate-slide-up">
+          <h2 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight">Practice Sets</h2>
+          <p className="mt-2 text-base text-text-secondary leading-relaxed max-w-xl">Select a JLPT level and start practicing. Each set contains 25 questions designed to match real exam conditions.</p>
+        </div>
+
+        <div className="flex flex-wrap gap-2 mb-8 animate-slide-up">
+          {LEVELS.map((level) => (
+            <button key={level} onClick={() => setActiveFilter(level)}
+              className={`px-5 py-2.5 rounded-radius-md text-sm transition-all duration-200 ${activeFilter === level ? 'bg-accent text-text-inverse font-semibold shadow-elevated' : 'bg-bg-elevated text-text-secondary border border-border hover:border-border-hover hover:text-text-primary'}`}>
+              {level === 'All' ? 'All Levels' : level}
             </button>
           ))}
         </div>
-      </div>
 
-      {/* Content */}
-      <main className="max-w-lg mx-auto px-4 py-4 pb-24">
-        {loading && <LoadingSkeleton />}
-
-        {!loading && error && (
-          <div className="mt-8 text-center">
-            <p className="text-gray-400 mb-4">{error}</p>
-            <button
-              onClick={loadSets}
-              className="tap-min px-6 py-3 rounded-lg bg-primary-600 text-white font-medium hover:bg-primary-500 transition-colors"
-            >
-              Try Again
-            </button>
-          </div>
-        )}
-
-        {!loading && !error && sets.length === 0 && (
-          <div className="mt-16 text-center">
-            <p className="text-gray-400 text-lg">No practice sets available for this level yet.</p>
-            <p className="text-gray-500 text-sm mt-2">Check back soon!</p>
-          </div>
-        )}
-
-        {!loading && !error && sets.length > 0 && (
-          <div className="space-y-3">
-            {sets.map((set) => (
-              <button
-                key={set.id}
-                onClick={() => handleSetSelect(set.id)}
-                className="w-full text-left rounded-xl bg-dark-800 border border-dark-700 p-4 tap-min hover:border-primary-500/50 transition-colors active:scale-[0.98]"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className={`text-xs font-bold px-2 py-1 rounded-full ${
-                    set.level === 'N5' ? 'bg-emerald-500/20 text-emerald-400' :
-                    set.level === 'N4' ? 'bg-blue-500/20 text-blue-400' :
-                    'bg-purple-500/20 text-purple-400'
-                  }`}>
-                    {set.level}
-                  </span>
-                  <span className="text-xs text-gray-500">{set.question_count} questions</span>
+        {isLoading ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{[...Array(6)].map((_, i) => <div key={i} className="h-40 rounded-radius-lg bg-bg-elevated border border-border animate-pulse" />)}</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-20"><p className="text-text-secondary text-base">No sets found for this level.</p></div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 animate-slide-up">
+            {filtered.map((set) => (
+              <button key={set.id} onClick={() => navigate(`/exam/${set.id}`)}
+                className="group relative text-left bg-bg-elevated rounded-radius-lg border border-border hover:border-border-hover shadow-card hover:shadow-elevated p-5 transition-all duration-200 hover:-translate-y-0.5">
+                <div className="flex items-center justify-between mb-3">
+                  <span className={`inline-flex items-center px-2.5 py-1 rounded-radius-sm text-xs font-bold tracking-wide ${set.level === 'N5' ? 'bg-success-bg text-success' : set.level === 'N4' ? 'bg-warning-bg text-warning' : 'bg-danger-bg text-danger'}`}>{set.level}</span>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-radius-sm text-xs font-medium ${DIFFICULTY_STYLES[set.difficulty]}`}>{set.difficulty}</span>
                 </div>
-                <h3 className="font-semibold text-white">{set.title}</h3>
+                <h3 className="text-base font-semibold text-text-primary leading-snug mb-3 group-hover:text-accent transition-colors">{set.title}</h3>
+                <div className="flex items-center gap-4 text-xs text-text-tertiary">
+                  <span className="flex items-center gap-1.5"><BarChart3 className="w-3.5 h-3.5" />{set.questionCount} questions</span>
+                  <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" />{set.estimatedMinutes} min</span>
+                </div>
+                <div className="absolute top-5 right-5 opacity-0 group-hover:opacity-100 transition-opacity"><ChevronRight className="w-5 h-5 text-accent" /></div>
               </button>
             ))}
           </div>
         )}
       </main>
-
-      {/* Error Modal */}
-      {error && !loading && (
-        <ErrorModal
-          title="Couldn't load sets"
-          body={error}
-          primaryAction={{ label: 'Retry', onClick: loadSets }}
-          secondaryAction={{ label: 'Dismiss', onClick: () => setError(null) }}
-        />
-      )}
     </div>
   );
 }

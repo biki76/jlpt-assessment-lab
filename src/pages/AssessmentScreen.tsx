@@ -1,237 +1,127 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useExamStore } from '../stores/examStore';
-import { useAutoSave } from '../hooks/useAutoSave';
-import { fetchQuestionsForSet } from '../services/questionService';
-import { SessionRecoveryModal } from '../features/assessment/SessionRecoveryModal';
-import { QuestionCard } from '../features/assessment/QuestionCard';
-import { NavigationDotGrid } from '../features/assessment/NavigationDotGrid';
-import { SessionTimer } from '../features/assessment/SessionTimer';
+import { ArrowLeft, ArrowRight, Flag, AlertCircle } from 'lucide-react';
+import { ThemeToggle } from '../components/ThemeToggle';
 import { SubmitConfirmationModal } from '../features/assessment/SubmitConfirmationModal';
-import { LoadingSkeleton } from '../components/LoadingSkeleton';
-import { ErrorModal } from '../components/ErrorModal';
-import type { Question } from '../types';
+
+type Option = 'A' | 'B' | 'C' | 'D';
+interface Question { id: string; number: number; text: string; options: Record<Option, string>; section: 'Vocabulary' | 'Grammar' | 'Reading'; }
+
+const OPTION_LABELS: Option[] = ['A', 'B', 'C', 'D'];
 
 export function AssessmentScreen() {
-  const { setId } = useParams<{ setId: string }>();
+  const { setId } = useParams();
   const navigate = useNavigate();
   const [questions, setQuestions] = useState<Question[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [answers, setAnswers] = useState<Record<string, Option>>({});
+  const [flagged, setFlagged] = useState<Set<string>>(new Set());
+  const [timeRemaining, setTimeRemaining] = useState(20 * 60);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
-  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
-  const [sessionChecked, setSessionChecked] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const currentSession = useExamStore((s) => s.currentSession);
-  const setQuestionsInStore = useExamStore((s) => s.setQuestions);
-  const setCurrentQuestion = useExamStore((s) => s.setCurrentQuestion);
-  const recordAnswer = useExamStore((s) => s.recordAnswer);
-  const initSession = useExamStore((s) => s.initSession);
-  const clearSession = useExamStore((s) => s.clearSession);
-
-  useAutoSave();
-  const answerStartTime = useRef<number>(Date.now());
-
-  // Check for existing session on mount
   useEffect(() => {
-    if (!setId || sessionChecked) return;
+    setQuestions(Array.from({ length: 25 }, (_, i) => ({
+      id: `q-${i + 1}`, number: i + 1,
+      text: `This is sample question ${i + 1} text. In a real implementation, this would contain the actual Japanese question content with appropriate furigana and context.`,
+      options: { A: 'Option A content here', B: 'Option B content here', C: 'Option C content here', D: 'Option D content here' },
+      section: i < 10 ? 'Vocabulary' : i < 18 ? 'Grammar' : 'Reading',
+    })));
+    setIsLoading(false);
+  }, [setId]);
 
-    // Only show recovery if there's a session with ACTUAL answers for THIS set
-    const hasValidSession = currentSession && 
-      currentSession.set_id === setId && 
-      !currentSession.is_completed && 
-      !currentSession.is_abandoned &&
-      Object.keys(currentSession.answers).length > 0;
-
-    if (hasValidSession) {
-      setShowRecoveryModal(true);
-    } else {
-      // Clear any stale session and start fresh
-      clearSession();
-      initSession(setId);
-    }
-    setSessionChecked(true);
-  }, [setId, currentSession, sessionChecked, clearSession, initSession]);
-
-  // Load questions
   useEffect(() => {
-    if (!setId || !sessionChecked) return;
+    if (timeRemaining <= 0) return;
+    const interval = setInterval(() => setTimeRemaining((p) => p <= 1 ? 0 : p - 1), 1000);
+    return () => clearInterval(interval);
+  }, [timeRemaining]);
 
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await fetchQuestionsForSet(setId);
-        setQuestions(data);
-        setQuestionsInStore(data);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load questions');
-      } finally {
-        setLoading(false);
-      }
-    };
+  const currentQ = questions[currentIndex];
+  const answeredCount = Object.keys(answers).length;
+  const totalCount = questions.length;
 
-    load();
-  }, [setId, sessionChecked, setQuestionsInStore]);
+  const handleSelect = (option: Option) => { if (!currentQ) return; setAnswers((p) => ({ ...p, [currentQ.id]: option })); };
+  const handleFlag = () => { if (!currentQ) return; setFlagged((p) => { const n = new Set(p); if (n.has(currentQ.id)) n.delete(currentQ.id); else n.add(currentQ.id); return n; }); };
+  const handleSubmit = () => navigate(`/results/mock-session-id`);
+  const fmt = (s: number) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+  const tColor = timeRemaining > 300 ? 'text-success' : timeRemaining > 60 ? 'text-warning' : 'text-danger animate-pulse';
 
-  // Reset answer timer when question changes
-  useEffect(() => {
-    answerStartTime.current = Date.now();
-  }, [currentSession?.current_question_index]);
-
-  const handleSelectOption = useCallback((optionId: string) => {
-    if (!currentSession || !setId) return;
-    const timeSpent = Date.now() - answerStartTime.current;
-    const question = questions[currentSession.current_question_index];
-    if (!question) return;
-    recordAnswer(question.id, optionId, timeSpent);
-  }, [currentSession, questions, recordAnswer, setId]);
-
-  const handleNavigate = useCallback((index: number) => {
-    setCurrentQuestion(index);
-  }, [setCurrentQuestion]);
-
-  const handleSubmit = useCallback(() => {
-    setShowSubmitModal(true);
-  }, []);
-
-  const handleConfirmSubmit = useCallback(() => {
-    setShowSubmitModal(false);
-    navigate(`/results/${currentSession?.id || 'mock'}`);
-  }, [navigate, currentSession]);
-
-  const handleStartNew = useCallback(() => {
-    setShowRecoveryModal(false);
-    clearSession();
-    if (setId) initSession(setId);
-  }, [clearSession, initSession, setId]);
-
-  const handleResume = useCallback(() => {
-    setShowRecoveryModal(false);
-  }, []);
-
-  // Show recovery modal
-  if (showRecoveryModal && currentSession) {
-    return (
-      <div className="min-h-screen bg-dark-900 text-white flex items-center justify-center">
-        <SessionRecoveryModal
-          session={currentSession}
-          onResume={handleResume}
-          onStartNew={handleStartNew}
-        />
-      </div>
-    );
-  }
-
-  // Loading state
-  if (loading || !currentSession || !sessionChecked) {
-    return (
-      <div className="min-h-screen bg-dark-900 text-white">
-        <LoadingSkeleton />
-      </div>
-    );
-  }
-
-  // Error state
-  if (error) {
-    return (
-      <div className="min-h-screen bg-dark-900 text-white flex items-center justify-center p-4">
-        <ErrorModal
-          title="Couldn't load questions"
-          body={error}
-          primaryAction={{ label: 'Retry', onClick: () => window.location.reload() }}
-          secondaryAction={{ label: 'Back to Sets', onClick: () => navigate('/') }}
-        />
-      </div>
-    );
-  }
-
-  const currentQuestion = questions[currentSession.current_question_index];
-  const answeredIndices = Object.values(currentSession.answers).map((a) => {
-    const qIndex = questions.findIndex((q) => q.id === a.question_id);
-    return qIndex >= 0 ? qIndex : -1;
-  }).filter((i) => i >= 0);
-
-  const currentSelectedOption = currentQuestion
-    ? currentSession.answers[currentQuestion.id]?.selected_option_id
-    : undefined;
+  if (isLoading) return <div className="min-h-screen bg-bg-base flex items-center justify-center"><div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" /></div>;
+  if (!currentQ) return null;
 
   return (
-    <div className="min-h-screen bg-dark-900 text-white flex flex-col">
-      {/* Top Bar */}
-      <header className="sticky top-0 z-40 bg-dark-900/95 backdrop-blur border-b border-dark-700">
-        <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
-          <button
-            onClick={() => navigate('/')}
-            className="tap-min text-sm text-gray-400 hover:text-white transition-colors"
-          >
-            ← Exit
-          </button>
-          <SessionTimer startedAt={currentSession.started_at} />
+    <div className="min-h-screen bg-bg-base flex flex-col">
+      <header className="sticky top-0 z-30 bg-bg-base/90 backdrop-blur-md border-b border-border">
+        <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button onClick={() => navigate('/')} className="p-2 -ml-2 rounded-radius-md text-text-tertiary hover:text-text-primary hover:bg-bg-sunken transition-colors"><ArrowLeft className="w-5 h-5" /></button>
+            <span className="text-sm font-semibold text-text-primary">{currentQ.section}</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-radius-md bg-bg-elevated border border-border font-mono text-sm font-bold ${tColor}`}><AlertCircle className="w-4 h-4" />{fmt(timeRemaining)}</div>
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
-      {/* Navigation Dots */}
-      <div className="max-w-lg mx-auto w-full px-4 pt-2">
-        <NavigationDotGrid
-          total={questions.length}
-          currentIndex={currentSession.current_question_index}
-          answeredIndices={answeredIndices}
-          onNavigate={handleNavigate}
-        />
+      <div className="bg-bg-sunken border-b border-border overflow-x-auto">
+        <div className="max-w-4xl mx-auto px-4 py-3">
+          <div className="flex gap-1.5 min-w-max">
+            {questions.map((q, idx) => {
+              const active = idx === currentIndex, ans = !!answers[q.id], flg = flagged.has(q.id);
+              return (
+                <button key={q.id} onClick={() => setCurrentIndex(idx)}
+                  className={`relative w-9 h-9 rounded-radius-sm text-xs font-bold flex items-center justify-center transition-all duration-150 ${active ? 'bg-accent text-text-inverse shadow-elevated scale-110' : ans ? 'bg-success-bg text-success border border-success/20' : 'bg-bg-elevated text-text-tertiary border border-border hover:border-border-hover'} ${flg && !active ? 'ring-1 ring-warning' : ''}`}>
+                  {q.number}{flg && <span className="absolute -top-1 -right-1 w-2 h-2 bg-warning rounded-full" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
-      {/* Question */}
-      <main className="flex-1 max-w-lg mx-auto w-full px-4 py-4">
-        {currentQuestion && (
-          <QuestionCard
-            question={currentQuestion}
-            selectedOptionId={currentSelectedOption}
-            onSelectOption={handleSelectOption}
-            questionNumber={currentSession.current_question_index + 1}
-            totalQuestions={questions.length}
-          />
-        )}
+      <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-6 sm:py-8">
+        <div className="animate-slide-up">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <span className="w-10 h-10 rounded-radius-md bg-accent flex items-center justify-center text-sm font-bold text-text-inverse">{currentQ.number}</span>
+              <div>
+                <p className="text-xs font-medium text-text-tertiary uppercase tracking-wider">Question {currentQ.number} of {totalCount}</p>
+                <p className="text-sm font-semibold text-text-primary">{currentQ.section}</p>
+              </div>
+            </div>
+            <button onClick={handleFlag} className={`flex items-center gap-2 px-3 py-2 rounded-radius-md text-sm font-medium transition-colors ${flagged.has(currentQ.id) ? 'bg-warning-bg text-warning border border-warning/20' : 'bg-bg-elevated text-text-tertiary border border-border hover:text-text-primary'}`}><Flag className="w-4 h-4" />{flagged.has(currentQ.id) ? 'Flagged' : 'Flag'}</button>
+          </div>
+
+          <div className="bg-bg-elevated rounded-radius-lg border border-border p-5 sm:p-6 mb-6">
+            <p className="text-base sm:text-lg text-text-primary leading-relaxed font-medium">{currentQ.text}</p>
+          </div>
+
+          <div className="space-y-3">
+            {OPTION_LABELS.map((label) => (
+              <button key={label} onClick={() => handleSelect(label)}
+                className={`w-full flex items-start gap-4 p-4 sm:p-5 rounded-radius-lg border-2 text-left transition-all duration-200 ${answers[currentQ.id] === label ? 'bg-accent-muted border-accent text-accent' : 'bg-bg-elevated border-border text-text-secondary hover:border-border-hover hover:bg-bg-sunken'}`}>
+                <span className={`shrink-0 w-8 h-8 rounded-radius-sm flex items-center justify-center text-sm font-bold ${answers[currentQ.id] === label ? 'bg-accent text-text-inverse' : 'bg-bg-sunken text-text-tertiary'}`}>{label}</span>
+                <span className="text-sm sm:text-base text-text-primary leading-relaxed pt-0.5">{currentQ.options[label]}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       </main>
 
-      {/* Bottom Navigation */}
-      <footer className="sticky bottom-0 bg-dark-900/95 backdrop-blur border-t border-dark-700 safe-bottom">
-        <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
-          <button
-            onClick={() => handleNavigate(Math.max(0, currentSession.current_question_index - 1))}
-            disabled={currentSession.current_question_index === 0}
-            className="tap-min px-4 py-2 rounded-lg text-sm font-medium text-gray-300 bg-dark-700 hover:bg-dark-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Previous
-          </button>
-
-          {currentSession.current_question_index === questions.length - 1 ? (
-            <button
-              onClick={handleSubmit}
-              className="tap-min px-6 py-2 rounded-lg text-sm font-medium bg-primary-600 text-white hover:bg-primary-500 transition-colors"
-            >
-              Submit
-            </button>
+      <footer className="sticky bottom-0 z-30 bg-bg-base/90 backdrop-blur-md border-t border-border">
+        <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
+          <button onClick={() => setCurrentIndex((p) => Math.max(0, p - 1))} disabled={currentIndex === 0} className={`flex items-center gap-2 px-4 py-2.5 rounded-radius-md text-sm font-medium transition-colors ${currentIndex === 0 ? 'text-text-tertiary cursor-not-allowed' : 'text-text-secondary hover:text-text-primary hover:bg-bg-sunken'}`}><ArrowLeft className="w-4 h-4" />Previous</button>
+          <div className="text-sm text-text-tertiary"><span className="font-semibold text-text-primary">{answeredCount}</span> / {totalCount} answered</div>
+          {currentIndex === totalCount - 1 ? (
+            <button onClick={() => setShowSubmitModal(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-radius-md text-sm font-semibold text-text-inverse bg-accent hover:bg-accent-hover transition-colors shadow-elevated">Submit<ArrowRight className="w-4 h-4" /></button>
           ) : (
-            <button
-              onClick={() => handleNavigate(currentSession.current_question_index + 1)}
-              className="tap-min px-4 py-2 rounded-lg text-sm font-medium text-gray-300 bg-dark-700 hover:bg-dark-600 transition-colors"
-            >
-              Next
-            </button>
+            <button onClick={() => setCurrentIndex((p) => Math.min(totalCount - 1, p + 1))} className="flex items-center gap-2 px-4 py-2.5 rounded-radius-md text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-bg-sunken transition-colors">Next<ArrowRight className="w-4 h-4" /></button>
           )}
         </div>
       </footer>
 
-      {/* Submit Modal */}
-      {showSubmitModal && (
-        <SubmitConfirmationModal
-          answeredCount={Object.keys(currentSession.answers).length}
-          totalQuestions={questions.length}
-          onConfirm={handleConfirmSubmit}
-          onCancel={() => setShowSubmitModal(false)}
-        />
-      )}
+      <SubmitConfirmationModal isOpen={showSubmitModal} onConfirm={handleSubmit} onCancel={() => setShowSubmitModal(false)} answeredCount={answeredCount} totalCount={totalCount} />
     </div>
   );
 }
